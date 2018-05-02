@@ -4,8 +4,7 @@
  * @file
  * Schema API handling functions.
  */
-use Drupal\Core\Cache\Cache;
-use Drupal\Core\Database\Database;
+
 /**
  * @addtogroup schemaapi
  * @{
@@ -231,50 +230,6 @@ function drupal_schema_get_field_value(array $info, $value) {
         }
     }
     return $value;
-}
-
-/**
- * Gets the whole database schema.
- *
- * The returned schema will include any modifications made by any
- * module that implements hook_schema_alter().
- *
- * @param bool $rebuild
- *   If TRUE, the schema will be rebuilt instead of retrieved from the cache.
- */
-function drupal_get_complete_schema($rebuild = FALSE) {
-    static $schema;
-    if (!isset($schema) || $rebuild) {
-        // Try to load the schema from cache.
-        if (!$rebuild && $cached = \Drupal::cache()->get('schema')) {
-            $schema = $cached->data;
-        }
-        // Otherwise, rebuild the schema cache.
-        else {
-            $schema = array();
-            // Load the .install files to get hook_schema.
-            \Drupal::moduleHandler()->loadAllIncludes('install');
-            require_once __DIR__ . '/common.inc';
-            // Invoke hook_schema for all modules.
-            foreach (\Drupal::moduleHandler()->getImplementations('schema') as $module) {
-                // Cast the result of hook_schema() to an array, as a NULL return value
-                // would cause array_merge() to set the $schema variable to NULL as well.
-                // That would break modules which use $schema further down the line.
-                $current = (array) \Drupal::moduleHandler()->invoke($module, 'schema');
-                // Set 'module' and 'name' keys for each table, and remove descriptions,
-                // as they needlessly slow down \Drupal::cache()->get() for every single request.
-                _drupal_schema_initialize($current, $module);
-                $schema = array_merge($schema, $current);
-            }
-            \Drupal::moduleHandler()->alter('schema', $schema);
-            // If the schema is empty, avoid saving it: some database engines require
-            // the schema to perform queries, and this could lead to infinite loops.
-            if (!empty($schema)) {
-                \Drupal::cache()->set('schema', $schema, Cache::PERMANENT);
-            }
-        }
-    }
-    return $schema;
 }
 
 /**
