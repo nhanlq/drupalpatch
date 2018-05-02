@@ -4,7 +4,8 @@
  * @file
  * Schema API handling functions.
  */
-
+use Drupal\Core\Cache\Cache;
+use Drupal\Core\Database\Database;
 /**
  * @addtogroup schemaapi
  * @{
@@ -26,36 +27,36 @@ const SCHEMA_UNINSTALLED = -1;
  *   version. Otherwise, FALSE.
  */
 function drupal_get_schema_versions($module) {
-  $updates = &drupal_static(__FUNCTION__, NULL);
-  if (!isset($updates[$module])) {
-    $updates = [];
-    foreach (\Drupal::moduleHandler()->getModuleList() as $loaded_module => $filename) {
-      $updates[$loaded_module] = [];
-    }
+    $updates = &drupal_static(__FUNCTION__, NULL);
+    if (!isset($updates[$module])) {
+        $updates = [];
+        foreach (\Drupal::moduleHandler()->getModuleList() as $loaded_module => $filename) {
+            $updates[$loaded_module] = [];
+        }
 
-    // Prepare regular expression to match all possible defined hook_update_N().
-    $regexp = '/^(?<module>.+)_update_(?<version>\d+)$/';
-    $functions = get_defined_functions();
-    // Narrow this down to functions ending with an integer, since all
-    // hook_update_N() functions end this way, and there are other
-    // possible functions which match '_update_'. We use preg_grep() here
-    // instead of foreaching through all defined functions, since the loop
-    // through all PHP functions can take significant page execution time
-    // and this function is called on every administrative page via
-    // system_requirements().
-    foreach (preg_grep('/_\d+$/', $functions['user']) as $function) {
-      // If this function is a module update function, add it to the list of
-      // module updates.
-      if (preg_match($regexp, $function, $matches)) {
-        $updates[$matches['module']][] = $matches['version'];
-      }
+        // Prepare regular expression to match all possible defined hook_update_N().
+        $regexp = '/^(?<module>.+)_update_(?<version>\d+)$/';
+        $functions = get_defined_functions();
+        // Narrow this down to functions ending with an integer, since all
+        // hook_update_N() functions end this way, and there are other
+        // possible functions which match '_update_'. We use preg_grep() here
+        // instead of foreaching through all defined functions, since the loop
+        // through all PHP functions can take significant page execution time
+        // and this function is called on every administrative page via
+        // system_requirements().
+        foreach (preg_grep('/_\d+$/', $functions['user']) as $function) {
+            // If this function is a module update function, add it to the list of
+            // module updates.
+            if (preg_match($regexp, $function, $matches)) {
+                $updates[$matches['module']][] = $matches['version'];
+            }
+        }
+        // Ensure that updates are applied in numerical order.
+        foreach ($updates as &$module_updates) {
+            sort($module_updates, SORT_NUMERIC);
+        }
     }
-    // Ensure that updates are applied in numerical order.
-    foreach ($updates as &$module_updates) {
-      sort($module_updates, SORT_NUMERIC);
-    }
-  }
-  return empty($updates[$module]) ? FALSE : $updates[$module];
+    return empty($updates[$module]) ? FALSE : $updates[$module];
 }
 
 /**
@@ -74,24 +75,24 @@ function drupal_get_schema_versions($module) {
  *   module is not installed.
  */
 function drupal_get_installed_schema_version($module, $reset = FALSE, $array = FALSE) {
-  $versions = &drupal_static(__FUNCTION__, []);
+    $versions = &drupal_static(__FUNCTION__, []);
 
-  if ($reset) {
-    $versions = [];
-  }
-
-  if (!$versions) {
-    if (!$versions = \Drupal::keyValue('system.schema')->getAll()) {
-      $versions = [];
+    if ($reset) {
+        $versions = [];
     }
-  }
 
-  if ($array) {
-    return $versions;
-  }
-  else {
-    return isset($versions[$module]) ? $versions[$module] : SCHEMA_UNINSTALLED;
-  }
+    if (!$versions) {
+        if (!$versions = \Drupal::keyValue('system.schema')->getAll()) {
+            $versions = [];
+        }
+    }
+
+    if ($array) {
+        return $versions;
+    }
+    else {
+        return isset($versions[$module]) ? $versions[$module] : SCHEMA_UNINSTALLED;
+    }
 }
 
 /**
@@ -103,9 +104,9 @@ function drupal_get_installed_schema_version($module, $reset = FALSE, $array = F
  *   The new schema version.
  */
 function drupal_set_installed_schema_version($module, $version) {
-  \Drupal::keyValue('system.schema')->set($module, $version);
-  // Reset the static cache of module schema versions.
-  drupal_get_installed_schema_version(NULL, TRUE);
+    \Drupal::keyValue('system.schema')->set($module, $version);
+    // Reset the static cache of module schema versions.
+    drupal_get_installed_schema_version(NULL, TRUE);
 }
 
 /**
@@ -115,12 +116,12 @@ function drupal_set_installed_schema_version($module, $version) {
  *   The module for which the tables will be created.
  */
 function drupal_install_schema($module) {
-  $schema = drupal_get_module_schema($module);
-  _drupal_schema_initialize($schema, $module, FALSE);
+    $schema = drupal_get_module_schema($module);
+    _drupal_schema_initialize($schema, $module, FALSE);
 
-  foreach ($schema as $name => $table) {
-    \Drupal::database()->schema()->createTable($name, $table);
-  }
+    foreach ($schema as $name => $table) {
+        \Drupal::database()->schema()->createTable($name, $table);
+    }
 }
 
 /**
@@ -130,14 +131,14 @@ function drupal_install_schema($module) {
  *   The module for which the tables will be removed.
  */
 function drupal_uninstall_schema($module) {
-  $schema = drupal_get_module_schema($module);
-  _drupal_schema_initialize($schema, $module, FALSE);
+    $schema = drupal_get_module_schema($module);
+    _drupal_schema_initialize($schema, $module, FALSE);
 
-  foreach ($schema as $table) {
-    if (db_table_exists($table['name'])) {
-      db_drop_table($table['name']);
+    foreach ($schema as $table) {
+        if (db_table_exists($table['name'])) {
+            db_drop_table($table['name']);
+        }
     }
-  }
 }
 
 /**
@@ -154,20 +155,20 @@ function drupal_uninstall_schema($module) {
  *   is returned.
  */
 function drupal_get_module_schema($module, $table = NULL) {
-  // Load the .install file to get hook_schema.
-  module_load_install($module);
-  $schema = \Drupal::moduleHandler()->invoke($module, 'schema');
+    // Load the .install file to get hook_schema.
+    module_load_install($module);
+    $schema = \Drupal::moduleHandler()->invoke($module, 'schema');
 
-  if (isset($table)) {
-    if (isset($schema[$table])) {
-      return $schema[$table];
+    if (isset($table)) {
+        if (isset($schema[$table])) {
+            return $schema[$table];
+        }
+        return [];
+    }
+    elseif (!empty($schema)) {
+        return $schema;
     }
     return [];
-  }
-  elseif (!empty($schema)) {
-    return $schema;
-  }
-  return [];
 }
 
 /**
@@ -184,21 +185,21 @@ function drupal_get_module_schema($module, $table = NULL) {
  *   Defaults to TRUE.
  */
 function _drupal_schema_initialize(&$schema, $module, $remove_descriptions = TRUE) {
-  // Set the name and module key for all tables.
-  foreach ($schema as $name => &$table) {
-    if (empty($table['module'])) {
-      $table['module'] = $module;
+    // Set the name and module key for all tables.
+    foreach ($schema as $name => &$table) {
+        if (empty($table['module'])) {
+            $table['module'] = $module;
+        }
+        if (!isset($table['name'])) {
+            $table['name'] = $name;
+        }
+        if ($remove_descriptions) {
+            unset($table['description']);
+            foreach ($table['fields'] as &$field) {
+                unset($field['description']);
+            }
+        }
     }
-    if (!isset($table['name'])) {
-      $table['name'] = $name;
-    }
-    if ($remove_descriptions) {
-      unset($table['description']);
-      foreach ($table['fields'] as &$field) {
-        unset($field['description']);
-      }
-    }
-  }
 }
 
 /**
@@ -217,19 +218,63 @@ function _drupal_schema_initialize(&$schema, $module, $remove_descriptions = TRU
  *   The converted value.
  */
 function drupal_schema_get_field_value(array $info, $value) {
-  // Preserve legal NULL values.
-  if (isset($value) || !empty($info['not null'])) {
-    if ($info['type'] == 'int' || $info['type'] == 'serial') {
-      $value = (int) $value;
+    // Preserve legal NULL values.
+    if (isset($value) || !empty($info['not null'])) {
+        if ($info['type'] == 'int' || $info['type'] == 'serial') {
+            $value = (int) $value;
+        }
+        elseif ($info['type'] == 'float') {
+            $value = (float) $value;
+        }
+        elseif (!is_array($value)) {
+            $value = (string) $value;
+        }
     }
-    elseif ($info['type'] == 'float') {
-      $value = (float) $value;
+    return $value;
+}
+
+/**
+ * Gets the whole database schema.
+ *
+ * The returned schema will include any modifications made by any
+ * module that implements hook_schema_alter().
+ *
+ * @param bool $rebuild
+ *   If TRUE, the schema will be rebuilt instead of retrieved from the cache.
+ */
+function drupal_get_complete_schema($rebuild = FALSE) {
+    static $schema;
+    if (!isset($schema) || $rebuild) {
+        // Try to load the schema from cache.
+        if (!$rebuild && $cached = \Drupal::cache()->get('schema')) {
+            $schema = $cached->data;
+        }
+        // Otherwise, rebuild the schema cache.
+        else {
+            $schema = array();
+            // Load the .install files to get hook_schema.
+            \Drupal::moduleHandler()->loadAllIncludes('install');
+            require_once __DIR__ . '/common.inc';
+            // Invoke hook_schema for all modules.
+            foreach (\Drupal::moduleHandler()->getImplementations('schema') as $module) {
+                // Cast the result of hook_schema() to an array, as a NULL return value
+                // would cause array_merge() to set the $schema variable to NULL as well.
+                // That would break modules which use $schema further down the line.
+                $current = (array) \Drupal::moduleHandler()->invoke($module, 'schema');
+                // Set 'module' and 'name' keys for each table, and remove descriptions,
+                // as they needlessly slow down \Drupal::cache()->get() for every single request.
+                _drupal_schema_initialize($current, $module);
+                $schema = array_merge($schema, $current);
+            }
+            \Drupal::moduleHandler()->alter('schema', $schema);
+            // If the schema is empty, avoid saving it: some database engines require
+            // the schema to perform queries, and this could lead to infinite loops.
+            if (!empty($schema)) {
+                \Drupal::cache()->set('schema', $schema, Cache::PERMANENT);
+            }
+        }
     }
-    elseif (!is_array($value)) {
-      $value = (string) $value;
-    }
-  }
-  return $value;
+    return $schema;
 }
 
 /**
